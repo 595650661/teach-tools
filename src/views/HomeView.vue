@@ -1,6 +1,11 @@
 <template>
   <div class="wheel-wrapper">
     <div class="wheel-container">
+      <!-- 添加旋转背景图 -->
+      <div
+        class="wheel-bg"
+        :style="{ '--rotate-direction': isReverseRotation ? 'reverse' : 'normal' }"
+      ></div>
       <canvas ref="wheelCanvas" width="400" height="400" style="background: none"></canvas>
       <!-- 中心指针 -->
       <img
@@ -18,7 +23,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import POINTER from '@/assets/images/pointer.png'
 import POINTER_CLICK from '@/assets/images/click-pointer.png'
-import WHEEL_BG from '@/assets/images/turnplate-bg.png'
+// import WHEEL_BG from '@/assets/images/turnplate-bg.png'
 const prizes = [
   '一等奖',
   '二等奖',
@@ -43,7 +48,7 @@ const CENTER_X = CANVAS_WIDTH * 0.5
 // 画布中心的 Y 坐标
 const CENTER_Y = CANVAS_HEIGHT * 0.5
 // 转盘的半径（留出 20 像素的边距）
-const WHEEL_RADIUS = CANVAS_WIDTH * 0.5 - 20
+const WHEEL_RADIUS = CANVAS_WIDTH * 0.5 - 30
 // 扇形区域的交替颜色
 const SECTOR_COLORS = ['#ffecb3', '#ffe0b2']
 // 文字距离转盘中心的半径
@@ -54,6 +59,7 @@ const CENTER_CIRCLE_RADIUS = 30
 // 状态定义
 const wheelCanvas = ref<HTMLCanvasElement | null>(null)
 const isSpinning = ref(false)
+const isReverseRotation = ref(true) // 控制旋转方向，false为正向，true为逆向
 const winner = ref<number | null>(null)
 const currentAngle = ref<number>(270 - 360 / prizes.length / 2) // 动态计算初始角度，确保指针指向第一个奖项中心
 let animationFrameId: number | null = null
@@ -250,12 +256,34 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 20px;
 }
+/* 添加旋转动画 */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* 新增的背景元素 */
+.wheel-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('@/assets/images/turnplate-bg2.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  animation: rotate 8s linear infinite;
+  animation-direction: var(--rotate-direction, normal);
+  z-index: -1; /* 确保背景在转盘下方 */
+}
 
 .wheel-container {
   position: relative;
   margin: 20px 0;
-  background-image: url('@/assets/images/turnplate-bg.png');
-  background-size: contain;
 }
 
 canvas {
@@ -287,7 +315,6 @@ canvas {
   height: 30px;
   background-color: #f44336;
   border-radius: 50%;
-  z-index: 2;
 }
 
 /* 指向外围的箭头 */
@@ -302,7 +329,6 @@ canvas {
   border-left: 12px solid transparent;
   border-right: 12px solid transparent;
   border-bottom: 40px solid #f44336;
-  z-index: 1;
 }
 
 button {
