@@ -1,18 +1,24 @@
 <template>
   <div class="wheel-wrapper">
     <div class="wheel-container">
-      <canvas ref="wheelCanvas" width="300" height="300"></canvas>
+      <canvas ref="wheelCanvas" width="400" height="400" style="background: none"></canvas>
       <!-- 中心指针 -->
-      <div class="pointer"></div>
+      <img
+        :src="isSpinning ? POINTER : POINTER_CLICK"
+        class="pointer"
+        @click="clickSpin"
+        :style="{ cursor: isSpinning ? 'default' : 'pointer' }"
+      />
     </div>
-    <button @click="spin" :disabled="isSpinning">开始抽奖</button>
     <div class="winner">恭喜你抽中：{{ winner ? prizes[winner] : '' }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-
+import POINTER from '@/assets/images/pointer.png'
+import POINTER_CLICK from '@/assets/images/click-pointer.png'
+import WHEEL_BG from '@/assets/images/turnplate-bg.png'
 const prizes = [
   '一等奖',
   '二等奖',
@@ -26,21 +32,30 @@ const prizes = [
   '十等奖',
   '谢谢参与',
 ]
+
 // 常量定义
-const CANVAS_WIDTH = 300
-const CANVAS_HEIGHT = 300
-const CENTER_X = 150
-const CENTER_Y = 150
-const WHEEL_RADIUS = 140
+// 画布的宽度（单位：像素）
+const CANVAS_WIDTH = 400
+// 画布的高度（单位：像素）
+const CANVAS_HEIGHT = 400
+// 画布中心的 X 坐标
+const CENTER_X = CANVAS_WIDTH * 0.5
+// 画布中心的 Y 坐标
+const CENTER_Y = CANVAS_HEIGHT * 0.5
+// 转盘的半径（留出 20 像素的边距）
+const WHEEL_RADIUS = CANVAS_WIDTH * 0.5 - 20
+// 扇形区域的交替颜色
 const SECTOR_COLORS = ['#ffecb3', '#ffe0b2']
-const TEXT_RADIUS = 110
-const CENTER_CIRCLE_RADIUS = 10
+// 文字距离转盘中心的半径
+const TEXT_RADIUS = WHEEL_RADIUS * 0.75
+// 中心圆的半径
+const CENTER_CIRCLE_RADIUS = 30
 
 // 状态定义
 const wheelCanvas = ref<HTMLCanvasElement | null>(null)
 const isSpinning = ref(false)
 const winner = ref<number | null>(null)
-const currentAngle = ref<number>(270 - (360 / prizes.length / 2)) // 动态计算初始角度，确保指针指向第一个奖项中心
+const currentAngle = ref<number>(270 - 360 / prizes.length / 2) // 动态计算初始角度，确保指针指向第一个奖项中心
 let animationFrameId: number | null = null
 
 function getCanvasContext() {
@@ -72,7 +87,6 @@ function drawWheel() {
 
   const num = prizes.length
   const angle = (2 * Math.PI) / num
-  const sectorAngle = 360 / num
 
   // 清除画布
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -142,7 +156,7 @@ function getRandomIndex(max: number): number {
  * 3. 使用缓动函数实现平滑动画
  * 4. 更新转盘角度并触发重绘
  */
-function spin() {
+function clickSpin() {
   if (isSpinning.value) return
 
   // 添加短暂延迟后再禁用按钮，避免用户快速点击导致动画冲突
@@ -180,7 +194,8 @@ function spin() {
 
   // 预计算缓动函数并缓存
   const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
-  const calculateRotation = (progress: number) => startAngle + easeOutCubic(progress) * finalRotation
+  const calculateRotation = (progress: number) =>
+    startAngle + easeOutCubic(progress) * finalRotation
 
   /**
    * 动画帧回调函数
@@ -198,6 +213,18 @@ function spin() {
     } else {
       isSpinning.value = false
       winner.value = randomIndex
+
+      // 当剩余奖项大于2时才移除
+      if (prizes.length > 2) {
+        prizes.splice(randomIndex, 1)
+
+        // 重新计算角度指向第一个奖项中心
+        const sectorAngle = 360 / prizes.length
+        currentAngle.value = 270 - sectorAngle / 2
+      }
+
+      // 立即更新转盘
+      updateWheel()
     }
   }
 
@@ -227,6 +254,8 @@ onBeforeUnmount(() => {
 .wheel-container {
   position: relative;
   margin: 20px 0;
+  background-image: url('@/assets/images/turnplate-bg.png');
+  background-size: contain;
 }
 
 canvas {
@@ -238,12 +267,13 @@ canvas {
 /* 中心指针样式 - 锚点圆在中心，箭头指向外围 */
 .pointer {
   position: absolute;
-  top: 50%;
+  top: calc(50% - 18px);
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 30px;
-  height: 30px;
+  transform: translate(-50%, -50%) rotate(0deg);
+  width: 100px;
+  height: 100px;
   z-index: 10;
+  object-fit: contain;
 }
 
 /* 中心的锚点圆 */
