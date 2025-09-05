@@ -1,5 +1,31 @@
 <template>
   <div class="wheel-wrapper">
+    <div>
+      <h2>上传Excel文件</h2>
+      <el-upload
+        class="upload-demo"
+        :auto-upload="false"
+        :show-file-list="true"
+        :on-change="handleFileChange"
+        :on-remove="handleFileRemove"
+        :limit="1"
+        accept=".xlsx, .xls"
+      >
+        <el-button type="primary">选择文件</el-button>
+        <template #tip>
+          <div class="el-upload__tip">请上传 xlsx/xls 格式的 Excel 文件，且只包含一列数据。</div>
+        </template>
+      </el-upload>
+
+      <div v-if="excelData.length">
+        <h3>解析结果（已处理成数组）</h3>
+        <div class="data-display">
+          <p>数组长度：{{ excelData.length }}</p>
+          <pre>{{ excelData }}</pre>
+        </div>
+        <el-button type="danger" @click="importData" style="margin-top: 10px">导入数据源</el-button>
+      </div>
+    </div>
     <div class="wheel-container">
       <!-- 添加旋转背景图 -->
       <div
@@ -16,8 +42,9 @@
       />
     </div>
     <div class="winner">恭喜你抽中：{{ winner !== null ? prizes[winner] : '' }}</div>
-    <button 
-      @click="removePrize" 
+    <span>(将要被抽中的是：{{ willBeRemoved }})</span>
+    <button
+      @click="removePrize"
       class="remove-button"
       :disabled="winner === null || prizes.length <= 2"
     >
@@ -31,7 +58,62 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import POINTER from '@/assets/images/pointer.png'
 import POINTER_CLICK from '@/assets/images/click-pointer.png'
 // import WHEEL_BG from '@/assets/images/turnplate-bg.png'
-const prizes = [
+import * as XLSX from 'xlsx'
+// 存储解析后的 Excel 数据
+const excelData = ref([])
+/**
+ * 处理文件选择和数据解析
+ * @param {object} file - el-upload 传递的文件对象
+ */
+const handleFileChange = (file: { raw: File; status: string }) => {
+  if (file.status === 'ready') {
+    // 使用 FileReader 读取文件内容
+    const reader = new FileReader()
+
+    // 读取成功后的回调
+    reader.onload = (e) => {
+      try {
+        const data = e.target.result
+        // 将文件数据转换为二进制字符串
+        const workbook = XLSX.read(data, { type: 'binary' })
+
+        // 获取第一个工作表的名称
+        const sheetName = workbook.SheetNames[0]
+        // 获取第一个工作表
+        const worksheet = workbook.Sheets[sheetName]
+
+        // 将工作表数据转换为 JSON 数组
+        // header: 1 表示将第一行作为表头（键名），不处理。我们只取值
+        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+        // 由于已知 Excel 文件只有一列，我们遍历 jsonSheet 并提取每一行的第一个元素
+        // 并排除掉可能存在的空行或表头
+        excelData.value = jsonSheet
+          .filter((row) => row.length > 0) // 过滤空行
+          .map((row) => row[0]) // 提取第一列的数据
+          .slice(1) // 排除第一行（通常为表头）
+
+        ElMessage.success('Excel 文件解析成功！')
+      } catch (error) {
+        ElMessage.error('文件解析失败，请确保文件格式正确。')
+        console.error('解析错误:', error)
+      }
+    }
+
+    // 开始读取文件
+    reader.readAsBinaryString(file.raw)
+  }
+}
+
+/**
+ * 处理文件移除
+ */
+const handleFileRemove = () => {
+  excelData.value = []
+  ElMessage.info('文件已移除，数据已清空。')
+}
+
+const prizes = ref<string[]>([
   '一等奖',
   '二等奖',
   '三等奖',
@@ -43,7 +125,23 @@ const prizes = [
   '九等奖',
   '十等奖',
   '谢谢参与',
-]
+])
+const importData = () => {
+  prizes.value = [...excelData.value]
+  ElMessage.success('数据源已更新，转盘奖项已刷新！')
+  // 重置winner
+  winner.value = null
+
+  // 重新计算角度指向第一个奖项中心
+  if (prizes.value.length > 0) {
+    const sectorAngle = 360 / prizes.value.length
+    currentAngle.value = 270 - sectorAngle / 2
+  }
+
+  // 更新转盘
+  updateWheel()
+}
+const willBeRemoved = ref<string | null>(null)
 
 // 常量定义
 // 画布的宽度（单位：像素）
@@ -68,7 +166,7 @@ const wheelCanvas = ref<HTMLCanvasElement | null>(null)
 const isSpinning = ref(false)
 const isReverseRotation = ref(true) // 控制旋转方向，false为正向，true为逆向
 const winner = ref<number | null>(null)
-const currentAngle = ref<number>(270 - 360 / prizes.length / 2) // 动态计算初始角度，确保指针指向第一个奖项中心
+const currentAngle = ref<number>(270 - 360 / prizes.value.length / 2) // 动态计算初始角度，确保指针指向第一个奖项中心
 let animationFrameId: number | null = null
 
 function getCanvasContext() {
@@ -98,7 +196,7 @@ function drawWheel() {
   const ctx = getCanvasContext()
   if (!ctx) return
 
-  const num = prizes.length
+  const num = prizes.value.length
   const angle = (2 * Math.PI) / num
 
   // 清除画布
@@ -121,7 +219,7 @@ function drawWheel() {
     ctx.textAlign = 'right'
     ctx.fillStyle = '#333'
     ctx.font = 'bold 14px Arial'
-    ctx.fillText(prizes[i], TEXT_RADIUS, 10)
+    ctx.fillText(prizes.value[i], TEXT_RADIUS, 10)
     ctx.restore()
   }
 
@@ -180,8 +278,12 @@ function clickSpin() {
   winner.value = null
 
   // 使用工具函数生成随机索引
-  const num = prizes.length
+  const num = prizes.value.length
   const randomIndex = getRandomIndex(num)
+
+  // 在控制台提前输出将要被抽中的选项
+  willBeRemoved.value = prizes.value[randomIndex]
+  console.log('即将抽中的奖项:', willBeRemoved.value)
 
   // 计算需要旋转的角度
   const sectorAngle = 360 / num
@@ -242,14 +344,14 @@ function removePrize() {
   if (winner.value === null) return
 
   // 移除奖项
-  prizes.splice(winner.value, 1)
+  prizes.value.splice(winner.value, 1)
 
   // 重置winner
   winner.value = null
 
   // 重新计算角度指向第一个奖项中心
-  if (prizes.length > 0) {
-    const sectorAngle = 360 / prizes.length
+  if (prizes.value.length > 0) {
+    const sectorAngle = 360 / prizes.value.length
     currentAngle.value = 270 - sectorAngle / 2
   }
 
@@ -269,7 +371,7 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .wheel-wrapper {
   display: flex;
   flex-direction: column;
@@ -389,5 +491,20 @@ button:disabled {
   font-size: 18px;
   font-weight: bold;
   color: #2e7d32;
+}
+
+.upload-demo {
+  margin-bottom: 20px;
+}
+.data-display {
+  background-color: #f5f5f5;
+  padding: 15px;
+  border-radius: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 </style>
