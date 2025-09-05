@@ -15,7 +15,14 @@
         :style="{ cursor: isSpinning ? 'default' : 'pointer' }"
       />
     </div>
-    <div class="winner">恭喜你抽中：{{ winner ? prizes[winner] : '' }}</div>
+    <div class="winner">恭喜你抽中：{{ winner !== null ? prizes[winner] : '' }}</div>
+    <button 
+      @click="removePrize" 
+      class="remove-button"
+      :disabled="winner === null || prizes.length <= 2"
+    >
+      移除
+    </button>
   </div>
 </template>
 
@@ -220,21 +227,34 @@ function clickSpin() {
       isSpinning.value = false
       winner.value = randomIndex
 
-      // 当剩余奖项大于2时才移除
-      if (prizes.length > 2) {
-        prizes.splice(randomIndex, 1)
-
-        // 重新计算角度指向第一个奖项中心
-        const sectorAngle = 360 / prizes.length
-        currentAngle.value = 270 - sectorAngle / 2
-      }
-
-      // 立即更新转盘
+      // 不再移除奖项，只更新转盘显示
       updateWheel()
     }
   }
 
   animationFrameId = requestAnimationFrame(animate)
+}
+
+/**
+ * 移除当前中奖奖项
+ */
+function removePrize() {
+  if (winner.value === null) return
+
+  // 移除奖项
+  prizes.splice(winner.value, 1)
+
+  // 重置winner
+  winner.value = null
+
+  // 重新计算角度指向第一个奖项中心
+  if (prizes.length > 0) {
+    const sectorAngle = 360 / prizes.length
+    currentAngle.value = 270 - sectorAngle / 2
+  }
+
+  // 更新转盘
+  updateWheel()
 }
 
 onMounted(() => {
@@ -350,6 +370,15 @@ button:hover:not(:disabled) {
 button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.remove-button {
+  background-color: #f44336;
+  margin-top: 15px;
+}
+
+.remove-button:hover {
+  background-color: #d32f2f;
 }
 
 .winner {
