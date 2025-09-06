@@ -21,6 +21,7 @@ export default defineConfig({
       resolvers: [ElementPlusResolver()],
     }),
   ],
+  base: '/teach-tools/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

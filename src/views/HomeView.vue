@@ -79,13 +79,13 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import POINTER from '@/assets/images/pointer.png';
 import POINTER_CLICK from '@/assets/images/click-pointer.png';
 // import WHEEL_BG from '@/assets/images/turnplate-bg.png'
-import { genFileId } from 'element-plus';
+import { genFileId, ElMessage } from 'element-plus';
 import type { UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import * as XLSX from 'xlsx';
 // 存储解析后的 Excel 数据
-const excelData = ref([]);
+const excelData = ref<any[][]>([]);
 // 存储 Excel 文件的表头
-const excelHeaders = ref([]);
+const excelHeaders = ref<any[]>([]);
 // 存储选中的列索引
 const selectedColumn = ref(0);
 // 存储上传的文件列表
@@ -104,6 +104,9 @@ const handleFileChange = (file: { raw: File; status: string }) => {
     // 读取成功后的回调
     reader.onload = (e) => {
       try {
+        if (!e.target) {
+          throw new Error('FileReader event target is null');
+        }
         const data = e.target.result;
         // 将文件数据转换为二进制字符串
         const workbook = XLSX.read(data, { type: 'binary' });
@@ -115,10 +118,9 @@ const handleFileChange = (file: { raw: File; status: string }) => {
 
         // 将工作表数据转换为 JSON 数组
         // header: 1 表示将第一行作为表头（键名），不处理。我们只取值
-        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
+        const jsonSheet: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         // 提取表头（第一行）
-        const headers = jsonSheet[0] || [];
+        const headers = (jsonSheet[0] as any[]) || [];
         // 提取数据（排除表头）
         const rows = jsonSheet.slice(1);
 
