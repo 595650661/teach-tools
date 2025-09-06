@@ -4,13 +4,16 @@
       <div>
         <h2>上传Excel文件</h2>
         <el-upload
+          ref="uploadRef"
           class="upload-demo"
           :auto-upload="false"
           :show-file-list="true"
           :on-change="handleFileChange"
           :on-remove="handleFileRemove"
+          :on-exceed="handleExceed"
           :limit="1"
           accept=".xlsx, .xls"
+          :file-list="fileList"
         >
           <el-button type="primary">选择文件</el-button>
           <template #tip>
@@ -22,7 +25,11 @@
       <div v-if="excelData.length">
         <h3>解析结果</h3>
         <div class="data-display">
-          <el-select v-model="selectedColumn" placeholder="请选择数据列" style="margin-bottom: 10px">
+          <el-select
+            v-model="selectedColumn"
+            placeholder="请选择数据列"
+            style="margin-bottom: 10px"
+          >
             <el-option
               v-for="(header, index) in excelHeaders"
               :key="index"
@@ -68,17 +75,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import POINTER from '@/assets/images/pointer.png'
-import POINTER_CLICK from '@/assets/images/click-pointer.png'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import POINTER from '@/assets/images/pointer.png';
+import POINTER_CLICK from '@/assets/images/click-pointer.png';
 // import WHEEL_BG from '@/assets/images/turnplate-bg.png'
-import * as XLSX from 'xlsx'
+import { genFileId } from 'element-plus';
+import type { UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
+import * as XLSX from 'xlsx';
 // 存储解析后的 Excel 数据
-const excelData = ref([])
+const excelData = ref([]);
 // 存储 Excel 文件的表头
-const excelHeaders = ref([])
+const excelHeaders = ref([]);
 // 存储选中的列索引
-const selectedColumn = ref(0)
+const selectedColumn = ref(0);
+// 存储上传的文件列表
+const fileList = ref([]);
+// el-upload组件引用
+const uploadRef = ref<UploadInstance>();
 /**
  * 处理文件选择和数据解析
  * @param {object} file - el-upload 传递的文件对象
@@ -86,53 +99,85 @@ const selectedColumn = ref(0)
 const handleFileChange = (file: { raw: File; status: string }) => {
   if (file.status === 'ready') {
     // 使用 FileReader 读取文件内容
-    const reader = new FileReader()
+    const reader = new FileReader();
 
     // 读取成功后的回调
     reader.onload = (e) => {
       try {
-        const data = e.target.result
+        const data = e.target.result;
         // 将文件数据转换为二进制字符串
-        const workbook = XLSX.read(data, { type: 'binary' })
+        const workbook = XLSX.read(data, { type: 'binary' });
 
         // 获取第一个工作表的名称
-        const sheetName = workbook.SheetNames[0]
+        const sheetName = workbook.SheetNames[0];
         // 获取第一个工作表
-        const worksheet = workbook.Sheets[sheetName]
+        const worksheet = workbook.Sheets[sheetName];
 
         // 将工作表数据转换为 JSON 数组
         // header: 1 表示将第一行作为表头（键名），不处理。我们只取值
-        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         // 提取表头（第一行）
-        const headers = jsonSheet[0] || []
+        const headers = jsonSheet[0] || [];
         // 提取数据（排除表头）
-        const rows = jsonSheet.slice(1)
+        const rows = jsonSheet.slice(1);
+
+        // 过滤掉表头为空的列
+        const validColumns = headers
+          .map((header, index) => {
+            return header !== null && header !== undefined && header !== '' ? index : -1;
+          })
+          .filter((index) => index !== -1);
+
+        // 只保留有效列的数据
+        const filteredRows = rows.map((row) => {
+          return validColumns.map((index) => row[index]);
+        });
 
         // 存储解析后的数据
-        excelData.value = rows
-        // 存储表头
-        excelHeaders.value = headers
+        excelData.value = filteredRows;
+        // 存储过滤后的表头
+        excelHeaders.value = headers.filter((header, index) => validColumns.includes(index));
 
-        ElMessage.success('Excel 文件解析成功！')
+        selectedColumn.value = 0; // 重置选中的列索引
+
+        ElMessage.success('Excel 文件解析成功！');
       } catch (error) {
-        ElMessage.error('文件解析失败，请确保文件格式正确。')
-        console.error('解析错误:', error)
+        ElMessage.error('文件解析失败，请确保文件格式正确。');
+        console.error('解析错误:', error);
       }
-    }
+    };
 
     // 开始读取文件
-    reader.readAsBinaryString(file.raw)
+    reader.readAsBinaryString(file.raw);
   }
-}
+};
 
 /**
  * 处理文件移除
  */
 const handleFileRemove = () => {
-  excelData.value = []
-  ElMessage.info('文件已移除，数据已清空。')
-}
+  // 清空文件列表
+  fileList.value = [];
+  // 清空数据
+  excelData.value = [];
+  excelHeaders.value = [];
+
+  // 强制刷新el-upload组件
+  nextTick(() => {
+    // 触发DOM更新
+    uploadRef.value?.clearFiles();
+  });
+
+  ElMessage.info('文件已移除，数据已清空。');
+};
+
+const handleExceed: UploadProps['onExceed'] = (files) => {
+  uploadRef.value!.clearFiles();
+  const file = files[0] as UploadRawFile;
+  file.uid = genFileId();
+  uploadRef.value!.handleStart(file);
+};
 
 const prizes = ref<string[]>([
   '一等奖',
@@ -146,69 +191,77 @@ const prizes = ref<string[]>([
   '九等奖',
   '十等奖',
   '谢谢参与',
-])
+]);
 const importData = () => {
-  prizes.value = [...getSelectedColumnData()]
-  ElMessage.success('数据源已更新，转盘奖项已刷新！')
+  // 先获取当前选中的列数据
+  const selectedData = [...getSelectedColumnData()];
+
+  // 更新奖项数据
+  prizes.value = selectedData;
+  ElMessage.success('数据源已更新，转盘奖项已刷新！');
   // 重置winner
-  winner.value = null
+  winner.value = null;
 
   // 重新计算角度指向第一个奖项中心
   if (prizes.value.length > 0) {
-    const sectorAngle = 360 / prizes.value.length
-    currentAngle.value = 270 - sectorAngle / 2
+    const sectorAngle = 360 / prizes.value.length;
+    currentAngle.value = 270 - sectorAngle / 2;
   }
 
   // 更新转盘
-  updateWheel()
-}
+  updateWheel();
+};
 
 // 获取选中的列数据
 const getSelectedColumnData = () => {
-  return excelData.value.map(row => row[selectedColumn.value])
-}
-const willBeRemoved = ref<string | null>(null)
+  if (excelData.value.length === 0 || excelHeaders.value.length === 0) {
+    return [];
+  }
+  const selectedColumnIndex = selectedColumn.value;
+  const selectedColumnData = excelData.value.map((row) => row[selectedColumnIndex]);
+  return selectedColumnData;
+};
+const willBeRemoved = ref<string | null>(null);
 
-// 常量定义
 // 画布的宽度（单位：像素）
-const CANVAS_WIDTH = 400
+const CANVAS_WIDTH = 400;
 // 画布的高度（单位：像素）
-const CANVAS_HEIGHT = 400
+const CANVAS_HEIGHT = 400;
 // 画布中心的 X 坐标
-const CENTER_X = CANVAS_WIDTH * 0.5
+const CENTER_X = CANVAS_WIDTH * 0.5;
 // 画布中心的 Y 坐标
-const CENTER_Y = CANVAS_HEIGHT * 0.5
+const CENTER_Y = CANVAS_HEIGHT * 0.5;
 // 转盘的半径（留出 20 像素的边距）
-const WHEEL_RADIUS = CANVAS_WIDTH * 0.5 - 30
+const WHEEL_RADIUS = CANVAS_WIDTH * 0.5 - 30;
 // 扇形区域的交替颜色
-const SECTOR_COLORS = ['#ffecb3', '#ffe0b2']
+const SECTOR_COLORS = ['#ffecb3', '#ffe0b2'];
 // 文字距离转盘中心的半径
-const TEXT_RADIUS = WHEEL_RADIUS * 0.75
+const TEXT_RADIUS = WHEEL_RADIUS * 0.75;
 // 中心圆的半径
-const CENTER_CIRCLE_RADIUS = 30
+const CENTER_CIRCLE_RADIUS = 30;
 
 // 状态定义
-const wheelCanvas = ref<HTMLCanvasElement | null>(null)
-const isSpinning = ref(false)
-const isReverseRotation = ref(true) // 控制旋转方向，false为正向，true为逆向
-const winner = ref<number | null>(null)
-const currentAngle = ref<number>(270 - 360 / prizes.value.length / 2) // 动态计算初始角度，确保指针指向第一个奖项中心
-let animationFrameId: number | null = null
+const wheelCanvas = ref<HTMLCanvasElement | null>(null);
+const isSpinning = ref(false);
+const isReverseRotation = ref(true); // 控制旋转方向，false为正向，true为逆向
+const winner = ref<number | null>(null);
+const currentAngle = ref<number>(270 - 360 / prizes.value.length / 2); // 动态计算初始角度，确保指针指向第一个奖项中心
+let animationFrameId: number | null = null;
 
 function getCanvasContext() {
-  const canvas = wheelCanvas.value
+  const canvas = wheelCanvas.value;
   if (!canvas) {
-    console.error('Canvas element is not available.')
-    return null
+    console.error('Canvas element is not available.');
+    return null;
   }
 
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d');
   if (!ctx) {
-    console.error('Failed to get 2D rendering context.')
-    return null
+    console.error('Failed to get 2D rendering context.');
+    return null;
   }
 
-  return ctx
+  return ctx;
 }
 
 /**
@@ -219,55 +272,55 @@ function getCanvasContext() {
  * 4. 绘制中心圆
  */
 function drawWheel() {
-  const ctx = getCanvasContext()
-  if (!ctx) return
+  const ctx = getCanvasContext();
+  if (!ctx) return;
 
-  const num = prizes.value.length
-  const angle = (2 * Math.PI) / num
+  const num = prizes.value.length;
+  const angle = (2 * Math.PI) / num;
 
   // 清除画布
-  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   // 绘制扇形区域（从右侧开始，顺时针）
   for (let i = 0; i < num; i++) {
-    ctx.beginPath()
-    ctx.moveTo(CENTER_X, CENTER_Y)
-    ctx.arc(CENTER_X, CENTER_Y, WHEEL_RADIUS, i * angle, (i + 1) * angle)
-    ctx.closePath()
-    ctx.fillStyle = SECTOR_COLORS[i % 2]
-    ctx.fill()
-    ctx.stroke()
+    ctx.beginPath();
+    ctx.moveTo(CENTER_X, CENTER_Y);
+    ctx.arc(CENTER_X, CENTER_Y, WHEEL_RADIUS, i * angle, (i + 1) * angle);
+    ctx.closePath();
+    ctx.fillStyle = SECTOR_COLORS[i % 2];
+    ctx.fill();
+    ctx.stroke();
 
     // 绘制文字
-    ctx.save()
-    ctx.translate(CENTER_X, CENTER_Y)
-    ctx.rotate(i * angle + angle / 2)
-    ctx.textAlign = 'right'
-    ctx.fillStyle = '#333'
-    ctx.font = 'bold 14px Arial'
-    ctx.fillText(prizes.value[i], TEXT_RADIUS, 10)
-    ctx.restore()
+    ctx.save();
+    ctx.translate(CENTER_X, CENTER_Y);
+    ctx.rotate(i * angle + angle / 2);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(prizes.value[i], TEXT_RADIUS, 10);
+    ctx.restore();
   }
 
   // 绘制中心圆
-  ctx.beginPath()
-  ctx.arc(CENTER_X, CENTER_Y, CENTER_CIRCLE_RADIUS, 0, 2 * Math.PI)
-  ctx.fillStyle = '#fff'
-  ctx.fill()
-  ctx.stroke()
+  ctx.beginPath();
+  ctx.arc(CENTER_X, CENTER_Y, CENTER_CIRCLE_RADIUS, 0, 2 * Math.PI);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.stroke();
 }
 
 function updateWheel() {
-  const ctx = getCanvasContext()
-  if (!ctx) return
+  const ctx = getCanvasContext();
+  if (!ctx) return;
 
-  ctx.save()
-  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-  ctx.translate(CENTER_X, CENTER_Y)
-  ctx.rotate((currentAngle.value * Math.PI) / 180)
-  ctx.translate(-CENTER_X, -CENTER_Y)
-  drawWheel()
-  ctx.restore()
+  ctx.save();
+  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.translate(CENTER_X, CENTER_Y);
+  ctx.rotate((currentAngle.value * Math.PI) / 180);
+  ctx.translate(-CENTER_X, -CENTER_Y);
+  drawWheel();
+  ctx.restore();
 }
 
 /**
@@ -277,12 +330,12 @@ function updateWheel() {
  */
 function getRandomIndex(max: number): number {
   if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-    const array = new Uint32Array(1)
-    window.crypto.getRandomValues(array)
-    return array[0] % max
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    return array[0] % max;
   } else {
     // 回退到Math.random()
-    return Math.floor(Math.random() * max)
+    return Math.floor(Math.random() * max);
   }
 }
 
@@ -294,107 +347,107 @@ function getRandomIndex(max: number): number {
  * 4. 更新转盘角度并触发重绘
  */
 function clickSpin() {
-  if (isSpinning.value) return
+  if (isSpinning.value) return;
 
   // 添加短暂延迟后再禁用按钮，避免用户快速点击导致动画冲突
   setTimeout(() => {
-    isSpinning.value = true
-  }, 100)
+    isSpinning.value = true;
+  }, 100);
 
-  winner.value = null
+  winner.value = null;
 
   // 使用工具函数生成随机索引
-  const num = prizes.value.length
-  const randomIndex = getRandomIndex(num)
+  const num = prizes.value.length;
+  const randomIndex = getRandomIndex(num);
 
   // 在控制台提前输出将要被抽中的选项
-  willBeRemoved.value = prizes.value[randomIndex]
-  console.log('即将抽中的奖项:', willBeRemoved.value)
+  willBeRemoved.value = prizes.value[randomIndex];
+  console.log('即将抽中的奖项:', willBeRemoved.value);
 
   // 计算需要旋转的角度
-  const sectorAngle = 360 / num
+  const sectorAngle = 360 / num;
   // 每个奖项的中心角度
-  const prizeCenterAngle = sectorAngle * randomIndex + sectorAngle / 2
+  const prizeCenterAngle = sectorAngle * randomIndex + sectorAngle / 2;
   // 指针在顶部(270度方向)
-  let targetAngle = 270 - prizeCenterAngle
+  let targetAngle = 270 - prizeCenterAngle;
 
   // 规范化角度
   while (targetAngle < 0) {
-    targetAngle += 360
+    targetAngle += 360;
   }
 
   // 加上额外的旋转圈数（5圈）增加视觉效果
-  const extraRotation = 5 * 360
+  const extraRotation = 5 * 360;
   // 最终旋转角度
-  const finalRotation = extraRotation + targetAngle - (currentAngle.value % 360)
+  const finalRotation = extraRotation + targetAngle - (currentAngle.value % 360);
 
-  const startTime = performance.now()
-  const duration = 4000 // 4秒动画
+  const startTime = performance.now();
+  const duration = 4000; // 4秒动画
 
-  const startAngle = currentAngle.value
+  const startAngle = currentAngle.value;
 
   // 预计算缓动函数并缓存
-  const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+  const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
   const calculateRotation = (progress: number) =>
-    startAngle + easeOutCubic(progress) * finalRotation
+    startAngle + easeOutCubic(progress) * finalRotation;
 
   /**
    * 动画帧回调函数
    * @param timestamp - 当前时间戳
    */
   const animate = (timestamp: number) => {
-    const elapsed = timestamp - startTime
-    const progress = Math.min(elapsed / duration, 1)
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed / duration, 1);
 
-    currentAngle.value = calculateRotation(progress)
-    updateWheel()
+    currentAngle.value = calculateRotation(progress);
+    updateWheel();
 
     if (progress < 1) {
-      animationFrameId = requestAnimationFrame(animate)
+      animationFrameId = requestAnimationFrame(animate);
     } else {
-      isSpinning.value = false
-      winner.value = randomIndex
+      isSpinning.value = false;
+      winner.value = randomIndex;
 
       // 不再移除奖项，只更新转盘显示
-      updateWheel()
+      updateWheel();
     }
-  }
+  };
 
-  animationFrameId = requestAnimationFrame(animate)
+  animationFrameId = requestAnimationFrame(animate);
 }
 
 /**
  * 移除当前中奖奖项
  */
 function removePrize() {
-  if (winner.value === null) return
+  if (winner.value === null) return;
 
   // 移除奖项
-  prizes.value.splice(winner.value, 1)
+  prizes.value.splice(winner.value, 1);
 
   // 重置winner
-  winner.value = null
+  winner.value = null;
 
   // 重新计算角度指向第一个奖项中心
   if (prizes.value.length > 0) {
-    const sectorAngle = 360 / prizes.value.length
-    currentAngle.value = 270 - sectorAngle / 2
+    const sectorAngle = 360 / prizes.value.length;
+    currentAngle.value = 270 - sectorAngle / 2;
   }
 
   // 更新转盘
-  updateWheel()
+  updateWheel();
 }
 
 onMounted(() => {
   // 初始绘制时确保转盘正确显示
-  updateWheel()
-})
+  updateWheel();
+});
 
 onBeforeUnmount(() => {
   if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
+    cancelAnimationFrame(animationFrameId);
   }
-})
+});
 </script>
 
 <style scoped lang="scss">
