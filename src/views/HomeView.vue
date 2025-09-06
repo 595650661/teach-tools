@@ -75,13 +75,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, type Ref } from 'vue';
 import POINTER from '@/assets/images/pointer.png';
 import POINTER_CLICK from '@/assets/images/click-pointer.png';
 // import WHEEL_BG from '@/assets/images/turnplate-bg.png'
 import { genFileId, ElMessage } from 'element-plus';
 import type { UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import * as XLSX from 'xlsx';
+
+import WOOD_START from '@/assets/sounds/wood_start.wav';
+import WOOD_END from '@/assets/sounds/wood_end.wav';
+import WOOD_SPINNING from '@/assets/sounds/wood_click.wav';
+
+// 创建音频对象
+const startSound = new Audio(WOOD_START);
+const endSound = new Audio(WOOD_END);
+
+// 预加载音频
+startSound.preload = 'auto';
+endSound.preload = 'auto';
+
+// 创建响应式引用
+const startSoundRef = ref<HTMLAudioElement | null>(startSound);
+const endSoundRef = ref<HTMLAudioElement | null>(endSound);
+
 // 存储解析后的 Excel 数据
 const excelData = ref<any[][]>([]);
 // 存储 Excel 文件的表头
@@ -340,7 +357,31 @@ function getRandomIndex(max: number): number {
     return Math.floor(Math.random() * max);
   }
 }
+// 播放音效函数
+const playSound = (sound: Ref<HTMLAudioElement | null>) => {
+  if (!sound.value) return;
 
+  try {
+    // 重置音频
+    sound.value.pause();
+    sound.value.currentTime = 0;
+
+    // 播放音频
+    const playPromise = sound.value.play();
+
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.error('播放音效失败:', err);
+        // 处理自动播放被阻止的情况
+        if (err.name === 'NotAllowedError') {
+          console.warn('自动播放被阻止，需要用户先与页面交互');
+        }
+      });
+    }
+  } catch (err) {
+    console.error('播放音效异常:', err);
+  }
+};
 /**
  * 启动转盘旋转动画
  * 1. 生成随机索引作为中奖结果
@@ -355,6 +396,8 @@ function clickSpin() {
   setTimeout(() => {
     isSpinning.value = true;
   }, 100);
+
+  playSound(startSoundRef);
 
   winner.value = null;
 
@@ -409,6 +452,9 @@ function clickSpin() {
     } else {
       isSpinning.value = false;
       winner.value = randomIndex;
+
+      // 播放结束音效
+      playSound(endSoundRef);
 
       // 不再移除奖项，只更新转盘显示
       updateWheel();
