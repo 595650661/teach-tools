@@ -1,21 +1,23 @@
 <template>
   <div class="wheel-wrapper">
-    <div>
-      <h2>上传Excel文件</h2>
-      <el-upload
-        class="upload-demo"
-        :auto-upload="false"
-        :show-file-list="true"
-        :on-change="handleFileChange"
-        :on-remove="handleFileRemove"
-        :limit="1"
-        accept=".xlsx, .xls"
-      >
-        <el-button type="primary">选择文件</el-button>
-        <template #tip>
-          <div class="el-upload__tip">请上传 xlsx/xls 格式的 Excel 文件，且只包含一列数据。</div>
-        </template>
-      </el-upload>
+    <div style="display: flex; flex-direction: column; width: 400px">
+      <div>
+        <h2>上传Excel文件</h2>
+        <el-upload
+          class="upload-demo"
+          :auto-upload="false"
+          :show-file-list="true"
+          :on-change="handleFileChange"
+          :on-remove="handleFileRemove"
+          :limit="1"
+          accept=".xlsx, .xls"
+        >
+          <el-button type="primary">选择文件</el-button>
+          <template #tip>
+            <div class="el-upload__tip">请上传 xlsx/xls 格式的 Excel 文件，且只包含一列数据。</div>
+          </template>
+        </el-upload>
+      </div>
 
       <div v-if="excelData.length">
         <h3>解析结果（已处理成数组）</h3>
@@ -23,33 +25,37 @@
           <p>数组长度：{{ excelData.length }}</p>
           <pre>{{ excelData }}</pre>
         </div>
-        <el-button type="danger" @click="importData" style="margin-top: 10px">导入数据源</el-button>
+        <el-button type="primary" @click="importData" style="margin-top: 10px"
+          >导入数据源</el-button
+        >
       </div>
     </div>
-    <div class="wheel-container">
-      <!-- 添加旋转背景图 -->
-      <div
-        class="wheel-bg"
-        :style="{ '--rotate-direction': isReverseRotation ? 'reverse' : 'normal' }"
-      ></div>
-      <canvas ref="wheelCanvas" width="400" height="400" style="background: none"></canvas>
-      <!-- 中心指针 -->
-      <img
-        :src="isSpinning ? POINTER : POINTER_CLICK"
-        class="pointer"
-        @click="clickSpin"
-        :style="{ cursor: isSpinning ? 'default' : 'pointer' }"
-      />
+    <div style="margin-left: 200px">
+      <div class="wheel-container">
+        <!-- 添加旋转背景图 -->
+        <div
+          class="wheel-bg"
+          :style="{ '--rotate-direction': isReverseRotation ? 'reverse' : 'normal' }"
+        ></div>
+        <canvas ref="wheelCanvas" width="400" height="400" style="background: none"></canvas>
+        <!-- 中心指针 -->
+        <img
+          :src="isSpinning ? POINTER : POINTER_CLICK"
+          class="pointer"
+          @click="clickSpin"
+          :style="{ cursor: isSpinning ? 'default' : 'pointer' }"
+        />
+      </div>
+      <div class="winner">恭喜你抽中：{{ winner !== null ? prizes[winner] : '' }}</div>
+      <div>(将要被抽中的是：{{ willBeRemoved }})</div>
+      <el-button
+        @click="removePrize"
+        type="danger"
+        :disabled="winner === null || prizes.length <= 2"
+      >
+        移除
+      </el-button>
     </div>
-    <div class="winner">恭喜你抽中：{{ winner !== null ? prizes[winner] : '' }}</div>
-    <span>(将要被抽中的是：{{ willBeRemoved }})</span>
-    <button
-      @click="removePrize"
-      class="remove-button"
-      :disabled="winner === null || prizes.length <= 2"
-    >
-      移除
-    </button>
   </div>
 </template>
 
@@ -85,6 +91,13 @@ const handleFileChange = (file: { raw: File; status: string }) => {
         // 将工作表数据转换为 JSON 数组
         // header: 1 表示将第一行作为表头（键名），不处理。我们只取值
         const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+        // 校验列数
+        const invalidRows = jsonSheet.filter(row => row.length > 1)
+        if (invalidRows.length > 0) {
+          ElMessage.error('文件格式错误：请确保文件只包含一列数据。')
+          return
+        }
 
         // 由于已知 Excel 文件只有一列，我们遍历 jsonSheet 并提取每一行的第一个元素
         // 并排除掉可能存在的空行或表头
@@ -374,9 +387,10 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .wheel-wrapper {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 20px;
+  padding: 100px;
+  width: 100%;
+  height: 100%;
 }
 /* 添加旋转动画 */
 @keyframes rotate {
@@ -457,30 +471,9 @@ button {
   margin-top: 10px;
   padding: 10px 20px;
   font-size: 16px;
-  background-color: #4caf50;
   color: white;
   border: none;
   border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-button:hover:not(:disabled) {
-  background-color: #45a049;
-}
-
-button:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
-}
-
-.remove-button {
-  background-color: #f44336;
-  margin-top: 15px;
-}
-
-.remove-button:hover {
-  background-color: #d32f2f;
 }
 
 .winner {
