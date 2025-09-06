@@ -20,10 +20,18 @@
       </div>
 
       <div v-if="excelData.length">
-        <h3>解析结果（已处理成数组）</h3>
+        <h3>解析结果</h3>
         <div class="data-display">
-          <p>数组长度：{{ excelData.length }}</p>
-          <pre>{{ excelData }}</pre>
+          <el-select v-model="selectedColumn" placeholder="请选择数据列" style="margin-bottom: 10px">
+            <el-option
+              v-for="(header, index) in excelHeaders"
+              :key="index"
+              :label="header"
+              :value="index"
+            />
+          </el-select>
+          <p>数组长度：{{ getSelectedColumnData().length }}</p>
+          <pre>{{ getSelectedColumnData() }}</pre>
         </div>
         <el-button type="primary" @click="importData" style="margin-top: 10px"
           >导入数据源</el-button
@@ -67,6 +75,10 @@ import POINTER_CLICK from '@/assets/images/click-pointer.png'
 import * as XLSX from 'xlsx'
 // 存储解析后的 Excel 数据
 const excelData = ref([])
+// 存储 Excel 文件的表头
+const excelHeaders = ref([])
+// 存储选中的列索引
+const selectedColumn = ref(0)
 /**
  * 处理文件选择和数据解析
  * @param {object} file - el-upload 传递的文件对象
@@ -92,19 +104,15 @@ const handleFileChange = (file: { raw: File; status: string }) => {
         // header: 1 表示将第一行作为表头（键名），不处理。我们只取值
         const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
 
-        // 校验列数
-        const invalidRows = jsonSheet.filter(row => row.length > 1)
-        if (invalidRows.length > 0) {
-          ElMessage.error('文件格式错误：请确保文件只包含一列数据。')
-          return
-        }
+        // 提取表头（第一行）
+        const headers = jsonSheet[0] || []
+        // 提取数据（排除表头）
+        const rows = jsonSheet.slice(1)
 
-        // 由于已知 Excel 文件只有一列，我们遍历 jsonSheet 并提取每一行的第一个元素
-        // 并排除掉可能存在的空行或表头
-        excelData.value = jsonSheet
-          .filter((row) => row.length > 0) // 过滤空行
-          .map((row) => row[0]) // 提取第一列的数据
-          .slice(1) // 排除第一行（通常为表头）
+        // 存储解析后的数据
+        excelData.value = rows
+        // 存储表头
+        excelHeaders.value = headers
 
         ElMessage.success('Excel 文件解析成功！')
       } catch (error) {
@@ -140,7 +148,7 @@ const prizes = ref<string[]>([
   '谢谢参与',
 ])
 const importData = () => {
-  prizes.value = [...excelData.value]
+  prizes.value = [...getSelectedColumnData()]
   ElMessage.success('数据源已更新，转盘奖项已刷新！')
   // 重置winner
   winner.value = null
@@ -153,6 +161,11 @@ const importData = () => {
 
   // 更新转盘
   updateWheel()
+}
+
+// 获取选中的列数据
+const getSelectedColumnData = () => {
+  return excelData.value.map(row => row[selectedColumn.value])
 }
 const willBeRemoved = ref<string | null>(null)
 
