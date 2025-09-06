@@ -37,8 +37,8 @@
               :value="index"
             />
           </el-select>
-          <p>数组长度：{{ getSelectedColumnData().length }}</p>
-          <pre>{{ getSelectedColumnData() }}</pre>
+          <p>数组长度：{{ selectedColumnData.length }}</p>
+          <pre>{{ selectedColumnData }}</pre>
         </div>
         <el-button type="primary" @click="importData" style="margin-top: 10px"
           >导入数据源</el-button
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, type Ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, type Ref, computed } from 'vue';
 import POINTER from '@/assets/images/pointer.png';
 import POINTER_CLICK from '@/assets/images/click-pointer.png';
 // import WHEEL_BG from '@/assets/images/turnplate-bg.png'
@@ -95,10 +95,10 @@ const spinningSound = new Audio(WOOD_SPINNING);
 // 音效控制参数
 const soundSettings = {
   spinningSoundInterval: 100, // 旋转音效播放间隔（毫秒）
-  lastSpinningSoundTime: 0,   // 上次播放旋转音效的时间
-  spinningVolume: 0.5,        // 旋转音效音量
-  startVolume: 0.7,           // 开始音效音量
-  endVolume: 0.7              // 结束音效音量
+  lastSpinningSoundTime: 0, // 上次播放旋转音效的时间
+  spinningVolume: 0.5, // 旋转音效音量
+  startVolume: 0.7, // 开始音效音量
+  endVolume: 0.7, // 结束音效音量
 };
 
 // 预加载音频
@@ -126,6 +126,19 @@ const selectedColumn = ref(0);
 const fileList = ref([]);
 // el-upload组件引用
 const uploadRef = ref<UploadInstance>();
+
+// 缓存选中列的数据以提高性能
+const selectedColumnData = computed(() => {
+  if (excelData.value.length === 0 || excelHeaders.value.length === 0) {
+    return [];
+  }
+  const selectedColumnIndex = selectedColumn.value;
+  // 安全地获取选中列的数据，避免数组越界
+  return excelData.value.map((row) => {
+    return row.length > selectedColumnIndex ? row[selectedColumnIndex] : undefined;
+  }).filter((item) => item !== undefined);
+});
+
 /**
  * 处理文件选择和数据解析
  * @param {object} file - el-upload 传递的文件对象
@@ -158,22 +171,26 @@ const handleFileChange = (file: { raw: File; status: string }) => {
         // 提取数据（排除表头）
         const rows = jsonSheet.slice(1);
 
-        // 过滤掉表头为空的列
+        // 过滤掉表头为null或undefined的列（但保留空字符串）
         const validColumns = headers
           .map((header, index) => {
-            return header !== null && header !== undefined && header !== '' ? index : -1;
+            return header !== null && header !== undefined ? index : -1;
           })
           .filter((index) => index !== -1);
 
         // 只保留有效列的数据
         const filteredRows = rows.map((row) => {
-          return validColumns.map((index) => row[index]);
+          return validColumns.map((index) => {
+            // 保留所有值，包括空字符串，只过滤undefined和null
+            const value = row[index];
+            return (value !== undefined && value !== null) ? value : '';
+          });
         });
 
         // 存储解析后的数据
         excelData.value = filteredRows;
-        // 存储过滤后的表头
-        excelHeaders.value = headers.filter((header, index) => validColumns.includes(index));
+        // 存储过滤后的表头（保留空字符串）
+        excelHeaders.value = validColumns.map(index => headers[index]);
 
         selectedColumn.value = 0; // 重置选中的列索引
 
@@ -192,18 +209,18 @@ const handleFileChange = (file: { raw: File; status: string }) => {
 /**
  * 处理文件移除
  */
-const handleFileRemove = () => {
+const handleFileRemove = async () => {
   // 清空文件列表
   fileList.value = [];
   // 清空数据
   excelData.value = [];
   excelHeaders.value = [];
+  selectedColumn.value = 0;
 
   // 强制刷新el-upload组件
-  nextTick(() => {
-    // 触发DOM更新
-    uploadRef.value?.clearFiles();
-  });
+  await nextTick();
+  // 触发DOM更新
+  uploadRef.value?.clearFiles();
 
   ElMessage.info('文件已移除，数据已清空。');
 };
@@ -230,7 +247,7 @@ const prizes = ref<string[]>([
 ]);
 const importData = () => {
   // 先获取当前选中的列数据
-  const selectedData = [...getSelectedColumnData()];
+  const selectedData = [...selectedColumnData.value];
 
   // 更新奖项数据
   prizes.value = selectedData;
@@ -249,14 +266,7 @@ const importData = () => {
 };
 
 // 获取选中的列数据
-const getSelectedColumnData = () => {
-  if (excelData.value.length === 0 || excelHeaders.value.length === 0) {
-    return [];
-  }
-  const selectedColumnIndex = selectedColumn.value;
-  const selectedColumnData = excelData.value.map((row) => row[selectedColumnIndex]);
-  return selectedColumnData;
-};
+// 已通过计算属性selectedColumnData替代
 const willBeRemoved = ref<string | null>(null);
 
 // 画布的宽度（单位：像素）
@@ -384,7 +394,7 @@ const playSound = (sound: Ref<HTMLAudioElement | null>, forceRestart = false) =>
     if (forceRestart || sound.value.currentTime >= sound.value.duration) {
       sound.value.currentTime = 0;
     }
-    
+
     // 播放音频
     const playPromise = sound.value.play();
 
@@ -483,8 +493,6 @@ function clickSpin() {
 
       // 速度阈值触发音效（快速时更密集，慢速时更稀疏）
       if (currentSpeed > 0.1) {
-        // 更平滑的渐弱曲线：基于剩余时间和速度动态调整频率
-        const remainingTime = (1 - progress) * duration;
         // 根据速度调整播放间隔 - 速度越快播放越频繁
         const speedFactor = Math.min(1, currentSpeed / 2);
         if (Math.random() < speedFactor) {
@@ -588,7 +596,7 @@ canvas {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-/* 中心指针样式 - 锚点圆在中心，箭头指向外围 */
+/* 中心指针样式 */
 .pointer {
   position: absolute;
   top: calc(50% - 18px);
@@ -598,33 +606,6 @@ canvas {
   height: 100px;
   z-index: 10;
   object-fit: contain;
-}
-
-/* 中心的锚点圆 */
-.pointer::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 30px;
-  height: 30px;
-  background-color: #f44336;
-  border-radius: 50%;
-}
-
-/* 指向外围的箭头 */
-.pointer::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -100%);
-  width: 0;
-  height: 0;
-  border-left: 12px solid transparent;
-  border-right: 12px solid transparent;
-  border-bottom: 40px solid #f44336;
 }
 
 button {
