@@ -90,14 +90,31 @@ import WOOD_SPINNING from '@/assets/sounds/wood_click.wav';
 // 创建音频对象
 const startSound = new Audio(WOOD_START);
 const endSound = new Audio(WOOD_END);
+const spinningSound = new Audio(WOOD_SPINNING);
+
+// 音效控制参数
+const soundSettings = {
+  spinningSoundInterval: 100, // 旋转音效播放间隔（毫秒）
+  lastSpinningSoundTime: 0,   // 上次播放旋转音效的时间
+  spinningVolume: 0.5,        // 旋转音效音量
+  startVolume: 0.7,           // 开始音效音量
+  endVolume: 0.7              // 结束音效音量
+};
 
 // 预加载音频
 startSound.preload = 'auto';
 endSound.preload = 'auto';
+spinningSound.preload = 'auto';
+
+// 设置音量
+startSound.volume = soundSettings.startVolume;
+endSound.volume = soundSettings.endVolume;
+spinningSound.volume = soundSettings.spinningVolume;
 
 // 创建响应式引用
 const startSoundRef = ref<HTMLAudioElement | null>(startSound);
 const endSoundRef = ref<HTMLAudioElement | null>(endSound);
+const spinningSoundRef = ref<HTMLAudioElement | null>(spinningSound);
 
 // 存储解析后的 Excel 数据
 const excelData = ref<any[][]>([]);
@@ -357,15 +374,17 @@ function getRandomIndex(max: number): number {
     return Math.floor(Math.random() * max);
   }
 }
-// 播放音效函数
-const playSound = (sound: Ref<HTMLAudioElement | null>) => {
+
+// 播放音效函数 - 改进版本
+const playSound = (sound: Ref<HTMLAudioElement | null>, forceRestart = false) => {
   if (!sound.value) return;
 
   try {
-    // 重置音频
-    sound.value.pause();
-    sound.value.currentTime = 0;
-
+    // 如果强制重新播放或者音频已经播放完毕，则从头开始播放
+    if (forceRestart || sound.value.currentTime >= sound.value.duration) {
+      sound.value.currentTime = 0;
+    }
+    
     // 播放音频
     const playPromise = sound.value.play();
 
@@ -380,6 +399,16 @@ const playSound = (sound: Ref<HTMLAudioElement | null>) => {
     }
   } catch (err) {
     console.error('播放音效异常:', err);
+  }
+};
+
+// 播放旋转音效 - 专门用于旋转音效的函数
+const playSpinningSound = () => {
+  const now = Date.now();
+  // 控制旋转音效播放频率，避免过于频繁播放
+  if (now - soundSettings.lastSpinningSoundTime > soundSettings.spinningSoundInterval) {
+    soundSettings.lastSpinningSoundTime = now;
+    playSound(spinningSoundRef, true);
   }
 };
 /**
@@ -446,6 +475,23 @@ function clickSpin() {
 
     currentAngle.value = calculateRotation(progress);
     updateWheel();
+
+    // 基于速度的动态音效播放（优化渐弱效果）
+    if (progress < 1) {
+      // 计算当前速度（基于缓动函数的导数）
+      const currentSpeed = (3 * Math.pow(1 - progress, 2) * finalRotation) / duration;
+
+      // 速度阈值触发音效（快速时更密集，慢速时更稀疏）
+      if (currentSpeed > 0.1) {
+        // 更平滑的渐弱曲线：基于剩余时间和速度动态调整频率
+        const remainingTime = (1 - progress) * duration;
+        // 根据速度调整播放间隔 - 速度越快播放越频繁
+        const speedFactor = Math.min(1, currentSpeed / 2);
+        if (Math.random() < speedFactor) {
+          playSpinningSound();
+        }
+      }
+    }
 
     if (progress < 1) {
       animationFrameId = requestAnimationFrame(animate);
