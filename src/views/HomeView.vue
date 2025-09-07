@@ -51,7 +51,7 @@
         >
       </div>
     </div>
-    <div style="margin-left: 200px">
+    <div>
       <div class="wheel-container">
         <!-- 添加旋转背景图 -->
         <div
@@ -76,6 +76,22 @@
       >
         移除
       </el-button>
+    </div>
+    <div style="width: 360px">
+      <el-button type="primary" @click="clearPrizes" style="margin-bottom: 10px"
+        >清空记录</el-button
+      >
+      <h3>抽中记录</h3>
+      <el-table
+        v-if="selectedPrizes.length"
+        :data="selectedPrizes"
+        border
+        style="width: 100%; margin-top: 20px"
+      >
+        <el-table-column prop="name" label="选项名称" width="180" />
+        <el-table-column prop="count" label="抽中次数" width="180" />
+      </el-table>
+      <div v-else style="text-align: center; color: #999">暂无抽中记录</div>
     </div>
   </div>
 </template>
@@ -135,7 +151,12 @@ const selectedColumn = ref(0);
 const fileList = ref([]);
 // el-upload组件引用
 const uploadRef = ref<UploadInstance>();
-
+// 存储抽中记录
+const selectedPrizes = ref<Array<{ name: string; count: number }>>([]);
+const clearPrizes = () => {
+  selectedPrizes.value = [];
+  ElMessage.info('抽中记录已清空');
+};
 // 缓存选中列的数据以提高性能
 const selectedColumnData = computed(() => {
   if (excelData.value.length === 0 || excelHeaders.value.length === 0) {
@@ -519,6 +540,15 @@ function clickSpin() {
       isSpinning.value = false;
       winner.value = randomIndex;
 
+      // 更新抽中记录
+      const prizeName = prizes.value[randomIndex];
+      const existingPrize = selectedPrizes.value.find((item) => item.name === prizeName);
+      if (existingPrize) {
+        existingPrize.count++;
+      } else {
+        selectedPrizes.value.push({ name: prizeName, count: 1 });
+      }
+
       // 播放结束音效
       playSound(endSoundRef);
 
@@ -567,7 +597,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .wheel-wrapper {
   display: flex;
-  align-items: center;
+  justify-content: space-around;
   padding: 100px;
   width: 100%;
   height: 100%;
