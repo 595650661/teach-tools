@@ -2,6 +2,12 @@
   <div class="wheel-wrapper">
     <div style="display: flex; flex-direction: column; width: 400px">
       <div>
+        <el-switch
+          v-model="enableSound"
+          active-text="开启音效"
+          inactive-text="关闭音效"
+          style="margin-bottom: 40px"
+        />
         <h2>上传Excel文件</h2>
         <el-upload
           ref="uploadRef"
@@ -111,6 +117,9 @@ startSound.volume = soundSettings.startVolume;
 endSound.volume = soundSettings.endVolume;
 spinningSound.volume = soundSettings.spinningVolume;
 
+// 音效开关
+const enableSound = ref(true);
+
 // 创建响应式引用
 const startSoundRef = ref<HTMLAudioElement | null>(startSound);
 const endSoundRef = ref<HTMLAudioElement | null>(endSound);
@@ -134,9 +143,11 @@ const selectedColumnData = computed(() => {
   }
   const selectedColumnIndex = selectedColumn.value;
   // 安全地获取选中列的数据，避免数组越界
-  return excelData.value.map((row) => {
-    return row.length > selectedColumnIndex ? row[selectedColumnIndex] : undefined;
-  }).filter((item) => item !== undefined);
+  return excelData.value
+    .map((row) => {
+      return row.length > selectedColumnIndex ? row[selectedColumnIndex] : undefined;
+    })
+    .filter((item) => item !== undefined);
 });
 
 /**
@@ -183,14 +194,14 @@ const handleFileChange = (file: { raw: File; status: string }) => {
           return validColumns.map((index) => {
             // 保留所有值，包括空字符串，只过滤undefined和null
             const value = row[index];
-            return (value !== undefined && value !== null) ? value : '';
+            return value !== undefined && value !== null ? value : '';
           });
         });
 
         // 存储解析后的数据
         excelData.value = filteredRows;
         // 存储过滤后的表头（保留空字符串）
-        excelHeaders.value = validColumns.map(index => headers[index]);
+        excelHeaders.value = validColumns.map((index) => headers[index]);
 
         selectedColumn.value = 0; // 重置选中的列索引
 
@@ -387,7 +398,7 @@ function getRandomIndex(max: number): number {
 
 // 播放音效函数 - 改进版本
 const playSound = (sound: Ref<HTMLAudioElement | null>, forceRestart = false) => {
-  if (!sound.value) return;
+  if (!sound.value || !enableSound.value) return;
 
   try {
     // 如果强制重新播放或者音频已经播放完毕，则从头开始播放
@@ -414,6 +425,7 @@ const playSound = (sound: Ref<HTMLAudioElement | null>, forceRestart = false) =>
 
 // 播放旋转音效 - 专门用于旋转音效的函数
 const playSpinningSound = () => {
+  if (!enableSound.value) return;
   const now = Date.now();
   // 控制旋转音效播放频率，避免过于频繁播放
   if (now - soundSettings.lastSpinningSoundTime > soundSettings.spinningSoundInterval) {
